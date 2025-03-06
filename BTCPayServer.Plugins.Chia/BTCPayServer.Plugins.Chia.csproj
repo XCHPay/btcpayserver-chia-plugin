@@ -1,0 +1,65 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>12</LangVersion>
+    <Configurations>Release;Altcoins-Debug</Configurations>
+    <Platforms>AnyCPU</Platforms>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Plugin specific properties -->
+  <PropertyGroup>
+    <Product>Chia</Product>
+    <Description>Add Chia support to your BTCPay Server</Description>
+    <Version>1.0.0</Version>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <!-- Plugin development properties -->
+  <PropertyGroup>
+    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+    <PreserveCompilationContext>false</PreserveCompilationContext>
+    <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Altcoins-Debug' ">
+    <DebugSymbols Condition=" '$(DebugSymbols)' == '' ">true</DebugSymbols>
+    <Optimize Condition=" '$(Optimize)' == '' ">false</Optimize>
+  </PropertyGroup>
+
+  <!-- This will make sure that referencing BTCPayServer doesn't put any artifact in the published directory -->
+  <ItemDefinitionGroup>
+    <ProjectReference>
+      <Properties>StaticWebAssetsEnabled=false</Properties>
+      <Private>false</Private>
+      <ExcludeAssets>runtime;native;build;buildTransitive;contentFiles</ExcludeAssets>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\btcpayserver\BTCPayServer\BTCPayServer.csproj" />
+    <EmbeddedResource Include="Resources\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="chia-dotnet" Version="4.0.0" />
+    <PackageReference Include="chia-dotnet-clvm" Version="0.1.2" />
+    <PackageReference Include="Nethermind.Crypto.Bls" Version="1.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Views\Shared\"/>
+  </ItemGroup>
+  
+  <ItemGroup>
+    <AdditionalFiles Include="Views\Shared\ChiaLike\StoreNavChiaExtension.cshtml" />
+    <AdditionalFiles Include="Views\Shared\ChiaLike\StoreWalletsNavChiaExtension.cshtml" />
+    <AdditionalFiles Include="Views\Shared\ChiaLike\ChiaSyncSummary.cshtml" />
+    <AdditionalFiles Include="Views\Shared\ChiaLike\ViewChiaLikePaymentData.cshtml" />
+    <AdditionalFiles Include="Views\UIChiaLikeStore\GetStoreChiaLikePaymentMethod.cshtml"/>
+    <AdditionalFiles Include="Views\UIChiaLikeStore\GetStoreChiaLikePaymentMethods.cshtml"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Resources" />
+  </ItemGroup>
+</Project>

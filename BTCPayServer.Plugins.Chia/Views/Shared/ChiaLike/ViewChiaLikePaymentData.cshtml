@@ -1,0 +1,69 @@
+@inject DisplayFormatter DisplayFormatter
+@using System.Globalization
+@using BTCPayServer.Plugins.Chia.Configuration
+@using BTCPayServer.Plugins.Chia.Controllers.ViewModels
+@using BTCPayServer.Plugins.Chia.Services.Payments
+@using BTCPayServer.Services
+@using BTCPayServer.Services.Invoices
+@model BTCPayServer.Models.InvoicingModels.InvoiceDetailsModel
+@inject TransactionLinkProviders TransactionLinkProviders
+@inject PaymentMethodHandlerDictionary Handlers
+@inject ChiaPluginConfiguration PluginConfiguration
+
+@{
+    var payments = Model.Payments.Select(payment =>
+    {
+        if (!Handlers.TryGetValue(payment.PaymentMethodId, out var h) || h is not ChiaLikePaymentMethodHandler handler)
+            return null;
+        var onChainPaymentData = handler.ParsePaymentDetails(payment.Details);
+        var confirmationCount = onChainPaymentData.ConfirmationCount;
+
+        var m = new ChiaLikePaymentViewModel()
+        {
+            CurrencyDisplayName = PluginConfiguration.ChiaConfigurationItems[handler.PaymentMethodId].CurrencyDisplayName,
+            DepositAddress = payment.Destination,
+            Amount = payment.Value.ToString(CultureInfo.InvariantCulture),
+            TransactionId = onChainPaymentData.TransactionId,
+            ReceivedTime = payment.ReceivedTime,
+            Confirmations = confirmationCount.ToString(CultureInfo.InvariantCulture),
+            TransactionLink = TransactionLinkProviders.GetTransactionLink(payment.PaymentMethodId, onChainPaymentData.TransactionId)
+        };
+        return m;
+    }).Where(c => c != null).Cast<ChiaLikePaymentViewModel>().ToList();
+}
+
+@if (payments.Any())
+{
+    <section>
+        <h5>Chia Payments</h5>
+        <table class="table table-hover">
+            <thead>
+            <tr>
+                <th class="w-75px">Crypto</th>
+                <th class="w-175px">Destination</th>
+                <th class="text-nowrap">Payment Proof</th>
+                <th class="text-end">Confirmations</th>
+                <th class="w-150px text-end">Paid</th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var payment in payments)
+            {
+                <tr >
+                    <td>@payment.CurrencyDisplayName</td>
+                    <td>
+                        <vc:truncate-center text="@payment.DepositAddress" classes="truncate-center-id"/>
+                    </td>
+                    <td>
+                        <vc:truncate-center text="@payment.TransactionId" link="@payment.TransactionLink" classes="truncate-center-id"/>
+                    </td>
+                    <td class="text-end">@payment.Confirmations</td>
+                    <td class="payment-value text-end text-nowrap">
+                        <span data-sensitive class="text-success">@DisplayFormatter.Currency(payment.Amount, payment.CurrencyDisplayName)</span>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </section>
+}
