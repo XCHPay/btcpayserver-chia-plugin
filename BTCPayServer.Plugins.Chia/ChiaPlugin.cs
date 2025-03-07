@@ -69,6 +69,8 @@ public class ChiaPlugin : BaseBTCPayServerPlugin
                 chiaConfiguration));
         
         services.AddDefaultPrettyName(chiaPaymentMethodId, chiaConfiguration.DisplayName);
+        
+        services.AddRateProvider<ChiaRateProvider>();
 
         // For future usages (multiple CATs)
         //services.AddSingleton<IUIExtension>(new UIExtension("Chia/StoreNavChiaExtension", "store-integrations-nav"));
@@ -92,7 +94,7 @@ public class ChiaPlugin : BaseBTCPayServerPlugin
 
                 DefaultRateRules =
                 [
-                    $"{Constants.XchCurrency}_USD = huobi({Constants.XchCurrency}_USDT)",
+                    $"{Constants.XchCurrency}_USD = xchprice({Constants.XchCurrency}_USD)",
                     $"{Constants.XchCurrency}_X = {Constants.XchCurrency}_USD * USD_X"
                 ],
 
