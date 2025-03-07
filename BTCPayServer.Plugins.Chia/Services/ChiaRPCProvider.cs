@@ -74,7 +74,7 @@ public class ChiaRpcProvider
     {
         var configuration = _chiaPluginConfiguration.ChiaConfigurationItems[pmi];
         var rpcClient = GetFullNodeRpcClient(pmi);
-        var puzzleHashes = addresses.Select(ChiaAddressHelper.AddressToPuzzleHash);
+        var puzzleHashes = addresses.Select(a => ChiaAddressHelper.AddressToPuzzleHash(a).ToLowerInvariant());
 
         var addressBalances = new Dictionary<string, BigInteger>();
 
