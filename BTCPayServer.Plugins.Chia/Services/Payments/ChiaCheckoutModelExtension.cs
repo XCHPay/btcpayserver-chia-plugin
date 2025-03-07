@@ -26,8 +26,8 @@ public class ChiaCheckoutModelExtension(
         
         // TODO Enable when Chia has a standard for payment links
 
-        // context.Model.InvoiceBitcoinUrl = _paymentLinkExtension.GetPaymentLink(context.Prompt, context.UrlHelper);
-        // context.Model.InvoiceBitcoinUrlQR = context.Model.InvoiceBitcoinUrl;
+        context.Model.InvoiceBitcoinUrl = _paymentLinkExtension.GetPaymentLink(context.Prompt, context.UrlHelper);
+        context.Model.InvoiceBitcoinUrlQR = "";
         
         context.Model.ShowPayInWalletButton = false;
         context.Model.PaymentMethodCurrency = configurationItem.CurrencyDisplayName;
