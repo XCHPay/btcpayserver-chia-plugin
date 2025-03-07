@@ -109,7 +109,7 @@ public class ChiaPlugin : BaseBTCPayServerPlugin
 
                 DefaultRateRules =
                 [
-                    $"{Constants.XchCurrency}_USD = 0.01",
+                    $"{Constants.XchCurrency}_USD = 100",
                     $"{Constants.XchCurrency}_X = {Constants.XchCurrency}_USD * USD_X"
                 ],
 
