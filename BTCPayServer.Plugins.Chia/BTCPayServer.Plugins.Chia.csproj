@@ -11,7 +11,7 @@
   <PropertyGroup>
     <Product>Chia</Product>
     <Description>Add Chia support to your BTCPay Server</Description>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
