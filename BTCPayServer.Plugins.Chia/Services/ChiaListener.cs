@@ -188,20 +188,13 @@ public class ChiaListener(
 
         var (additions, removals) =
             await fullNodeClient.GetAdditionsAndRemovals(block.HeaderHash);
-
-        Console.WriteLine("additions and removals");
-        Console.WriteLine(additions.Select(a => $"{a.Coin.Name}: {a.Coin.PuzzleHash} {a.Coin.Amount}").ToJson());
-        Console.WriteLine(removals.Select(a => $"{a.Coin.Name}: {a.Coin.PuzzleHash} {a.Coin.Amount}").ToJson());
-
+        
         var matches = additions
             .Where(addition => removals.All(removal => removal.Coin.Name != addition.Coin.Name))
             .Where(coinRecord => invoicesPerAddress.ContainsKey(ChiaAddressHelper
                 .PuzzleHashToAddress(coinRecord.Coin.PuzzleHash)
                 .ToLowerInvariant()));
-
-        Console.WriteLine("matches");
-        Console.WriteLine(matches.Select(a => $"{a.Coin.Name}: {a.Coin.PuzzleHash} {a.Coin.Amount}").ToJson());
-
+        
         foreach (var coinRecord in matches)
         {
             var parentCoin = removals.First(removal =>
@@ -210,7 +203,6 @@ public class ChiaListener(
             var (invoice, _, _) =
                 invoicesPerAddress
                     [ChiaAddressHelper.PuzzleHashToAddress(coinRecord.Coin.PuzzleHash).ToLowerInvariant()];
-            Console.WriteLine(invoice.Id);
             await HandlePaymentData(pmi, ChiaAddressHelper.PuzzleHashToAddress(parentCoin.Coin.PuzzleHash),
                 ChiaAddressHelper.PuzzleHashToAddress(coinRecord.Coin.PuzzleHash),
                 coinRecord.Coin.Amount,
