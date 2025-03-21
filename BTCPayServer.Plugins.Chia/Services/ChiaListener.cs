@@ -94,7 +94,7 @@ public class ChiaListener(
                         var lastBlockNumber = blockchainState.Peak!.Height;
                         if (lastBlockNumber > listenerState.LastBlockHeight)
                         {
-                            logger.LogInformation("New block avoid from {BlockNumber} to {NewBlockNumber}",
+                            logger.LogInformation("No open invoices, skipping from {BlockNumber} to {NewBlockNumber}",
                                 listenerState.LastBlockHeight, lastBlockNumber);
                             listenerState.LastBlockHeight = lastBlockNumber;
                         }
@@ -119,7 +119,7 @@ public class ChiaListener(
                             if (ex.Message.Contains("Record not found"))
                             {
                                 logger.LogInformation("Block not present on node yet {BlockNumber}",
-                                    listenerState.LastBlockHeight);
+                                    listenerState.LastBlockHeight + 1);
                                 Thread.Sleep(5_000);
                             }
                             else
@@ -128,8 +128,7 @@ public class ChiaListener(
                             }
                         }
                     }
-
-
+                    
                     await SetTrackingState(configurationItem, listenerState);
                 }
             }
@@ -166,6 +165,24 @@ public class ChiaListener(
         return chiaPluginConfiguration.ChiaConfigurationItems[pmi];
     }
 
+    private async Task OnNewBlockToIndex(PaymentMethodId pmi, BlockRecord block)
+    {
+        await UpdateAnyPendingChiaLikePayment(pmi, block);
+    }
+
+    private async Task UpdateAnyPendingChiaLikePayment(PaymentMethodId pmi, BlockRecord block)
+    {
+        var invoices = (await invoiceRepository.GetMonitoredInvoices(pmi, true))
+            .Where(i => StatusToTrack.Contains(i.Status))
+            .Where(i => i.GetPaymentPrompt(pmi)?.Activated is true)
+            .ToArray();
+
+        if (invoices.Length == 0)
+            return;
+
+        await UpdatePaymentStates(pmi, invoices, block);
+    }
+    
     private async Task UpdatePaymentStates(PaymentMethodId pmi, InvoiceEntity[] invoices, BlockRecord block)
     {
         if (invoices.Length == 0) return;
@@ -231,12 +248,8 @@ public class ChiaListener(
             if (valueTuples.Any())
                 eventAggregator.Publish(new InvoiceNeedUpdateEvent(valueTuples.Key.Id));
     }
-
-    private async Task OnNewBlockToIndex(PaymentMethodId pmi, BlockRecord block)
-    {
-        await UpdateAnyPendingChiaLikePayment(pmi, block);
-    }
-
+    
+    
     private async Task HandlePaymentData(
         PaymentMethodId pmi,
         string from,
@@ -275,21 +288,7 @@ public class ChiaListener(
         if (payment != null)
             await ReceivedPayment(invoice, payment);
     }
-
-
-    private async Task UpdateAnyPendingChiaLikePayment(PaymentMethodId pmi, BlockRecord block)
-    {
-        var invoices = (await invoiceRepository.GetMonitoredInvoices(pmi, true))
-            .Where(i => StatusToTrack.Contains(i.Status))
-            .Where(i => i.GetPaymentPrompt(pmi)?.Activated is true)
-            .ToArray();
-
-        if (invoices.Length == 0)
-            return;
-
-        await UpdatePaymentStates(pmi, invoices, block);
-    }
-
+    
     private static IEnumerable<PaymentEntity> GetPendingChiaLikePayments(InvoiceEntity invoice, PaymentMethodId pmi)
     {
         return invoice.GetPayments(false)
