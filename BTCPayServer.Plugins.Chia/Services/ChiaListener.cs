@@ -103,11 +103,10 @@ public class ChiaListener(
                     }
                     else
                     {
+                        var newBlockHeight = listenerState.LastBlockHeight + 1;
                         try
                         {
-                            var block =
-                                await fullNodeClient.GetBlockRecordByHeight(listenerState.LastBlockHeight + 1,
-                                    stoppingToken);
+                            var block = await fullNodeClient.GetBlockRecordByHeight(newBlockHeight, stoppingToken);
 
                             await OnNewBlockToIndex(pmi, block);
                             logger.LogInformation("New block indexed {BlockNumber}", block.Height);
@@ -118,8 +117,13 @@ public class ChiaListener(
                         {
                             if (ex.Message.Contains("Record not found"))
                             {
-                                logger.LogInformation("Block not present on node yet {BlockNumber}",
-                                    listenerState.LastBlockHeight + 1);
+                                logger.LogInformation("Block not present on node yet {BlockNumber}", newBlockHeight);
+                                Thread.Sleep(5_000);
+                            }
+                            else if (ex.Message.Contains("No additions found"))
+                            {
+                                logger.LogWarning("No additions found in transaction block {BlockHeight}",
+                                    newBlockHeight);
                                 Thread.Sleep(5_000);
                             }
                             else
@@ -128,7 +132,7 @@ public class ChiaListener(
                             }
                         }
                     }
-                    
+
                     await SetTrackingState(configurationItem, listenerState);
                 }
             }
@@ -182,53 +186,77 @@ public class ChiaListener(
 
         await UpdatePaymentStates(pmi, invoices, block);
     }
-    
+
     private async Task UpdatePaymentStates(PaymentMethodId pmi, InvoiceEntity[] invoices, BlockRecord block)
     {
-        if (invoices.Length == 0) return;
+        if (invoices.Length == 0)
+            return;
 
         var handler = (ChiaLikePaymentMethodHandler)handlers[pmi];
 
-        var expandedInvoices = invoices.Select(entity => (Invoice: entity,
-                Prompt: entity.GetPaymentPrompt(pmi),
-                PaymentMethodDetails: handler.ParsePaymentPromptDetails(entity.GetPaymentPrompt(pmi)!.Details)))
-            .Select(tuple => (
-                tuple.Invoice,
-                tuple.PaymentMethodDetails,
-                tuple.Prompt
-            )).ToArray();
-
-        var invoicesPerAddress = expandedInvoices.Where(i => i.Prompt is { Destination: not null })
-            .ToDictionary(i => i.Prompt!.Destination.ToLowerInvariant(), i => i);
-
-        var fullNodeClient = chiaRpcProvider.GetFullNodeRpcClient(pmi);
-
-        var (additions, removals) =
-            await fullNodeClient.GetAdditionsAndRemovals(block.HeaderHash);
-        
-        var matches = additions
-            .Where(addition => removals.All(removal => removal.Coin.Name != addition.Coin.Name))
-            .Where(coinRecord => invoicesPerAddress.ContainsKey(ChiaAddressHelper
-                .PuzzleHashToAddress(coinRecord.Coin.PuzzleHash)
-                .ToLowerInvariant()));
-        
-        foreach (var coinRecord in matches)
+        if (block.IsTransactionBlock)
         {
-            var parentCoin = removals.First(removal =>
-                removal.Coin.Name.ToLowerInvariant() ==
-                coinRecord.Coin.ParentCoinInfo.Replace("0x", "").ToLowerInvariant());
-            var (invoice, _, _) =
-                invoicesPerAddress
-                    [ChiaAddressHelper.PuzzleHashToAddress(coinRecord.Coin.PuzzleHash).ToLowerInvariant()];
-            await HandlePaymentData(pmi, ChiaAddressHelper.PuzzleHashToAddress(parentCoin.Coin.PuzzleHash),
-                ChiaAddressHelper.PuzzleHashToAddress(coinRecord.Coin.PuzzleHash),
-                coinRecord.Coin.Amount,
-                coinRecord.Coin.Name, 0, block.Height,
-                invoice);
+            var expandedInvoices = invoices.Select(entity => (Invoice: entity,
+                    Prompt: entity.GetPaymentPrompt(pmi),
+                    PaymentMethodDetails: handler.ParsePaymentPromptDetails(entity.GetPaymentPrompt(pmi)!.Details)))
+                .Select(tuple => (
+                    tuple.Invoice,
+                    tuple.PaymentMethodDetails,
+                    tuple.Prompt
+                )).ToArray();
+
+            logger.LogInformation("Found {InvoiceCount} invoices for processing", expandedInvoices.Length);
+
+            var invoicesPerPuzzleHash = expandedInvoices.Where(i => i.Prompt is { Destination: not null })
+                .ToDictionary(i => ChiaAddressHelper
+                    .AddressToPuzzleHash(i.Prompt!.Destination).ToLowerInvariant(), i => i);
+
+            var fullNodeClient = chiaRpcProvider.GetFullNodeRpcClient(pmi);
+
+            var (additions, removals) = await fullNodeClient.GetAdditionsAndRemovals(block.HeaderHash);
+            logger.LogInformation("Retrieved {AdditionCount} additions and {RemovalCount} removals", additions.Count(),
+                removals.Count());
+
+            if (!additions.Any())
+            {
+                throw new Exception($"No additions found in transaction block {block.Height}");
+            }
+            
+            var matches = additions
+                .Where(addition => removals.All(removal => removal.Coin.Name != addition.Coin.Name))
+                .Where(coinRecord => invoicesPerPuzzleHash.ContainsKey(coinRecord.Coin.PuzzleHash.Replace("0x", "")));
+
+            logger.LogInformation("Found {MatchCount} matching coin records", matches.Count());
+
+            foreach (var coinRecord in matches)
+            {
+                var parentCoin = removals.FirstOrDefault(removal =>
+                    removal.Coin.Name.ToLowerInvariant() ==
+                    coinRecord.Coin.ParentCoinInfo.Replace("0x", ""));
+
+                if (parentCoin == null)
+                {
+                    logger.LogWarning("Parent coin not found for transaction {TransactionId}", coinRecord.Coin.Name);
+                    continue;
+                }
+
+                var (invoice, _, _) = invoicesPerPuzzleHash[coinRecord.Coin.PuzzleHash.Replace("0x", "")];
+
+                logger.LogInformation("Handling payment data for invoice {InvoiceId}, Transaction {TransactionId}",
+                    invoice.Id,
+                    coinRecord.Coin.Name);
+
+                await HandlePaymentData(pmi,
+                    ChiaAddressHelper.PuzzleHashToAddress(parentCoin.Coin.PuzzleHash),
+                    ChiaAddressHelper.PuzzleHashToAddress(coinRecord.Coin.PuzzleHash),
+                    coinRecord.Coin.Amount,
+                    coinRecord.Coin.Name,
+                    0, block.Height,
+                    invoice);
+            }
         }
 
-        var updatedPaymentEntities =
-            new BlockingCollection<(PaymentEntity Payment, InvoiceEntity invoice)>();
+        var updatedPaymentEntities = new BlockingCollection<(PaymentEntity Payment, InvoiceEntity invoice)>();
         foreach (var invoice in invoices)
         foreach (var payment in GetPendingChiaLikePayments(invoice, pmi))
         {
@@ -243,13 +271,19 @@ public class ChiaListener(
             updatedPaymentEntities.Add((payment, invoice));
         }
 
+        logger.LogInformation("Updating confirmations for {PaymentCount} payments", updatedPaymentEntities.Count);
         await paymentService.UpdatePayments(updatedPaymentEntities.Select(tuple => tuple.Payment).ToList());
+
         foreach (var valueTuples in updatedPaymentEntities.GroupBy(entity => entity.invoice))
+        {
             if (valueTuples.Any())
+            {
+                logger.LogInformation("Publishing InvoiceNeedUpdateEvent for invoice {InvoiceId}", valueTuples.Key.Id);
                 eventAggregator.Publish(new InvoiceNeedUpdateEvent(valueTuples.Key.Id));
+            }
+        }
     }
-    
-    
+
     private async Task HandlePaymentData(
         PaymentMethodId pmi,
         string from,
@@ -257,6 +291,9 @@ public class ChiaListener(
         BigInteger totalAmount,
         string txId, uint confirmations, uint blockHeight, InvoiceEntity invoice)
     {
+        logger.LogInformation("Handling payment data for Invoice: {InvoiceId}, TxId: {TransactionId}, Amount: {Amount}",
+            invoice.Id, txId, totalAmount);
+
         var divisor = BigInteger.Pow(10, GetConfig(pmi).Divisibility);
         var quotient = totalAmount / divisor;
         var remainder = totalAmount % divisor;
@@ -286,9 +323,18 @@ public class ChiaListener(
 
         var payment = await paymentService.AddPayment(paymentData, [txId]);
         if (payment != null)
+        {
+            logger.LogInformation("Payment {PaymentId} added successfully for Invoice {InvoiceId}", payment.Id,
+                invoice.Id);
             await ReceivedPayment(invoice, payment);
+        }
+        else
+        {
+            logger.LogWarning("Failed to add payment {TransactionId} for Invoice {InvoiceId}", txId, invoice.Id);
+        }
     }
-    
+
+
     private static IEnumerable<PaymentEntity> GetPendingChiaLikePayments(InvoiceEntity invoice, PaymentMethodId pmi)
     {
         return invoice.GetPayments(false)
