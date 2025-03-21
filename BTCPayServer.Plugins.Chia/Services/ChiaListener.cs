@@ -16,6 +16,7 @@ using BTCPayServer.Services.Invoices;
 using chia.dotnet;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using NBitcoin.JsonConverters;
 using NBXplorer;
 
 namespace BTCPayServer.Plugins.Chia.Services;
@@ -58,6 +59,7 @@ public class ChiaListener(
 
     private async Task LoopIndex(ChiaPluginConfigurationItem configurationItem, CancellationToken stoppingToken)
     {
+        var timeOfLastBlock = DateTimeOffset.UtcNow;
         while (stoppingToken.IsCancellationRequested == false)
             try
             {
@@ -112,12 +114,16 @@ public class ChiaListener(
                             logger.LogInformation("New block indexed {BlockNumber}", block.Height);
 
                             listenerState.LastBlockHeight = block.Height;
+                            timeOfLastBlock = DateTimeOffset.UtcNow;
                         }
                         catch (Exception ex)
                         {
                             if (ex.Message.Contains("Record not found"))
                             {
-                                logger.LogInformation("Block not present on node yet {BlockNumber}", newBlockHeight);
+                                if (DateTimeOffset.UtcNow - timeOfLastBlock > TimeSpan.FromSeconds(120))
+                                {
+                                    logger.LogWarning("No new block for 120 seconds.");
+                                }
                                 Thread.Sleep(5_000);
                             }
                             else if (ex.Message.Contains("No additions found"))
@@ -242,10 +248,6 @@ public class ChiaListener(
 
                 var (invoice, _, _) = invoicesPerPuzzleHash[coinRecord.Coin.PuzzleHash.Replace("0x", "")];
 
-                logger.LogInformation("Handling payment data for invoice {InvoiceId}, Transaction {TransactionId}",
-                    invoice.Id,
-                    coinRecord.Coin.Name);
-
                 await HandlePaymentData(pmi,
                     ChiaAddressHelper.PuzzleHashToAddress(parentCoin.Coin.PuzzleHash),
                     ChiaAddressHelper.PuzzleHashToAddress(coinRecord.Coin.PuzzleHash),
@@ -271,7 +273,9 @@ public class ChiaListener(
             updatedPaymentEntities.Add((payment, invoice));
         }
 
-        logger.LogInformation("Updating confirmations for {PaymentCount} payments", updatedPaymentEntities.Count);
+        if (updatedPaymentEntities.Any())
+            logger.LogInformation("Updating confirmations for {PaymentCount} payments", updatedPaymentEntities.Count);
+        
         await paymentService.UpdatePayments(updatedPaymentEntities.Select(tuple => tuple.Payment).ToList());
 
         foreach (var valueTuples in updatedPaymentEntities.GroupBy(entity => entity.invoice))
