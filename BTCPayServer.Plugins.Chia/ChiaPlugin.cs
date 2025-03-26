@@ -76,7 +76,6 @@ public class ChiaPlugin : BaseBTCPayServerPlugin
         //services.AddSingleton<IUIExtension>(new UIExtension("Chia/StoreNavChiaExtension", "store-integrations-nav"));
         services.AddUIExtension("store-wallets-nav", "ChiaLike/StoreWalletsNavChiaExtension");
         services.AddUIExtension("store-invoices-payments", "ChiaLike/ViewChiaLikePaymentData");
-        services.AddUIExtension("checkout-payment-method", "ChiaLike/EmptyCheckoutPaymentMethodExtension");
         services.AddSingleton<ISyncSummaryProvider, ChiaSyncSummaryProvider>();
     }
 
