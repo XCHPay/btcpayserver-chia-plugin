@@ -1,0 +1,10 @@
+@model BTCPayServer.Models.InvoicingModels.CheckoutModel
+<div class="payment-box">
+    <div class="text-muted">Please send the quoted amount to the address listed below.<br/>Payments will be detected automatically.</div>
+    <div v-if="model.address" class="input-group mt-3">
+        <div class="form-floating" id="Address_@Model.PaymentMethodId">
+            <vc:truncate-center text="model.address" is-vue="true" padding="15" elastic="true" classes="form-control-plaintext" />
+            <label v-t="{ path: 'address', args: { paymentMethod: model.paymentMethodName }}"></label>
+        </div>
+    </div>
+</div>
